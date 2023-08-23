@@ -4,7 +4,7 @@ import Image from "next/image";
 // import styles from "./page.module.css";
 import "./wordsearchComponente.css";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const longestWordLength = (wordsArray: string[]) => {
   let longestLength = 0;
@@ -44,6 +44,13 @@ const addCellToGrid = (numberWords: number) => {
   return cells;
 };
 
+const checkSelectedWord = (word: string, words: string[]) => {
+  if (words.map((word) => word.toUpperCase()).includes(word)) {
+    return true;
+  }
+  return false;
+};
+
 const Home = () => {
   const words = [
     "película",
@@ -70,6 +77,10 @@ const Home = () => {
 
   const gridSize = longestWordLength(words) + addCellToGrid(words.length);
 
+  const addPosition = (row: number, col: number) => {
+    setPositionsSelected((prev) => [...prev, { row, col }]);
+  };
+
   const [grid, setGrid] = useState(createGrid(gridSize, gridSize, "x"));
   const [selectedWord, setSelectedWord] = useState("");
   const [positionsSelected, setPositionsSelected] = useState<
@@ -93,26 +104,118 @@ const Home = () => {
     setSelecting(true);
     setStartPos({ row, col });
     setCurrentPos({ row, col });
+    addPosition(row, col);
+  };
+
+  const getDiagonalPositions = (
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number
+  ) => {
+    const positions = [];
+    const rowDiff = endRow - startRow;
+    const colDiff = endCol - startCol;
+
+    const rowStep = rowDiff > 0 ? 1 : -1;
+    const colStep = colDiff > 0 ? 1 : -1;
+
+    let row = startRow;
+    let col = startCol;
+
+    while (row !== endRow || col !== endCol) {
+      positions.push({ row, col });
+      row += rowStep;
+      col += colStep;
+    }
+
+    positions.push({ row: endRow, col: endCol });
+    return positions;
   };
 
   const handleCellMouseEnter = (row: number, col: number) => {
     console.log(`MouseEnter en la celda ${row}, ${col}`);
     if (selecting) {
+      const direction = getMouseDirection(startPos.row, startPos.col, row, col);
+
       setCurrentPos({ row, col });
+
+      if (direction === "diagonal") {
+        const diagonalPositions = getDiagonalPositions(
+          startPos.row,
+          startPos.col,
+          row,
+          col
+        );
+
+        diagonalPositions.forEach((position) => {
+          console.log(position);
+          addPosition(position.row, position.col);
+        });
+      } else if (direction === "horizontal" || direction === "vertical") {
+        addPosition(row, col);
+      }
+    }
+  };
+
+  const getMouseDirection = (
+    startRow: number,
+    startCol: number,
+    currentRow: number,
+    currentCol: number
+  ) => {
+    const rowDiff = Math.abs(currentRow - startRow);
+    const colDiff = Math.abs(currentCol - startCol);
+
+    if (rowDiff === colDiff) {
+      // Diagonal movement
+      return "diagonal";
+    } else if (rowDiff > colDiff) {
+      // Vertical movement
+      return "vertical";
+    } else {
+      // Horizontal movement
+      return "horizontal";
     }
   };
 
   const handleCellMouseUp = () => {
-    console.log("MouseUp");
     if (selecting) {
       setSelecting(false);
-      // Aquí puedes procesar la selección y verificar si es una palabra válida
-      // basada en las posiciones seleccionadas (startPos y currentPos).
-      // Puedes usar una función similar a `checkSelectedWord`.
-      // Luego, restablece las posiciones seleccionadas y la palabra actual.
+      clearSelection();
+      const selectedLetters = [];
+      const startRowIndex = startPos.row;
+      const endRowIndex = currentPos.row;
+      const startColIndex = startPos.col;
+      const endColIndex = currentPos.col;
+      const rowDiff = Math.abs(endRowIndex - startRowIndex);
+      const colDiff = Math.abs(endColIndex - startColIndex);
+
+      if (rowDiff === colDiff) {
+        // Diagonal selection
+        for (let i = 0; i <= rowDiff; i++) {
+          const row =
+            startRowIndex + i * (endRowIndex > startRowIndex ? 1 : -1);
+          const col =
+            startColIndex + i * (endColIndex > startColIndex ? 1 : -1);
+          selectedLetters.push(grid[row][col]);
+        }
+      } else if (rowDiff === 0) {
+        // Horizontal selection
+        for (let col = startColIndex; col <= endColIndex; col++) {
+          selectedLetters.push(grid[startRowIndex][col]);
+        }
+      } else if (colDiff === 0) {
+        // Vertical selection
+        for (let row = startRowIndex; row <= endRowIndex; row++) {
+          selectedLetters.push(grid[row][startColIndex]);
+        }
+      }
+
+      console.log(selectedLetters.join(""));
+      setSelectedWord(selectedLetters.join(""));
       setCurrentPos({ row: -1, col: -1 });
       setStartPos({ row: -1, col: -1 });
-      setSelectedWord("");
     }
   };
   // Función para verificar si una palabra colisiona con otra en la cuadrícula
@@ -180,22 +283,30 @@ const Home = () => {
     setGrid(newGrid);
   };
 
-  const checkSelectedWord = (word: string) => {
-    if (words.map((word) => word.toUpperCase()).includes(word)) {
-      setCorrectPositions(positionsSelected);
-      setPositionsSelected([]);
-      console.log(`¡Palabra encontrada: ${word}!`);
-      // Aquí puedes realizar cualquier acción que desees cuando una palabra se ha encontrado
-    }
-  };
   const handleCellClick = (row: number, col: number) => {
-    console.log(`Click en la celda ${row}, ${col}`);
+    // console.log(`Click en la celda ${row}, ${col}`);
     if (grid[row][col] !== "x") {
       const selectedLetter = grid[row][col];
-      setPositionsSelected((prev) => [...prev, { row, col }]);
-      checkSelectedWord(selectedWord + selectedLetter);
+      if (checkSelectedWord(selectedWord + selectedLetter, words)) {
+        setCorrectPositions((prev) => [
+          ...prev,
+          ...positionsSelected,
+          { row, col },
+        ]);
+        clearSelection();
+      } else {
+        setPositionsSelected((prev) => [...prev, { row, col }]);
+      }
       setSelectedWord(selectedWord + selectedLetter);
+    } else {
+      clearSelection();
     }
+  };
+
+  const clearSelection = () => {
+    console.log("clearSelection");
+    setPositionsSelected([]);
+    setSelectedWord("");
   };
 
   useEffect(() => {
@@ -232,14 +343,19 @@ const Home = () => {
                       ? "correct"
                       : ""
                   }`}
-                  // onMouseDown={() => handleCellMouseDown(rowIndex, columnIndex)}
-                  // onMouseEnter={() =>
-                  //   handleCellMouseEnter(rowIndex, columnIndex)
-                  // }
-                  // onMouseUp={handleCellMouseUp}
-                  onClick={() => handleCellClick(rowIndex, columnIndex)}
                 >
-                  {letter === "x" ? "" : letter}
+                  <p
+                    onMouseDown={() =>
+                      handleCellMouseDown(rowIndex, columnIndex)
+                    }
+                    onMouseEnter={() =>
+                      handleCellMouseEnter(rowIndex, columnIndex)
+                    }
+                    onMouseUp={handleCellMouseUp}
+                    // onClick={() => handleCellClick(rowIndex, columnIndex)}
+                  >
+                    {letter === "x" ? "" : letter}
+                  </p>
                 </div>
               ))}
             </div>
