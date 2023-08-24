@@ -4,7 +4,12 @@ import Image from "next/image";
 // import styles from "./page.module.css";
 import "./wordsearchComponente.css";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+
+type Ipoint = {
+  row: number;
+  col: number;
+};
 
 const longestWordLength = (wordsArray: string[]) => {
   let longestLength = 0;
@@ -25,6 +30,69 @@ const createGrid = (rows: number, cols: number, value: string) => {
     Array.from({ length: cols }, () => value)
   );
   return matrix;
+};
+
+const getSelectedHoverData = (grid: string[][], start: Ipoint, end: Ipoint) => {
+  const selectedLetters = [];
+  const selectedPositions = [];
+  let direction = "none";
+  const startRowIndex = start.row;
+  const endRowIndex = end.row;
+  const startColIndex = start.col;
+  const endColIndex = end.col;
+  const rowDiff = Math.abs(endRowIndex - startRowIndex);
+  const colDiff = Math.abs(endColIndex - startColIndex);
+
+  if (
+    rowDiff === colDiff &&
+    startColIndex > endColIndex &&
+    startRowIndex > endRowIndex
+  ) {
+    direction = "diagonal-inverted";
+    for (let i = 0; i <= rowDiff; i++) {
+      const row = startRowIndex - i;
+      const col = startColIndex - i;
+      selectedPositions.push({ row, col });
+      selectedLetters.push(grid[row][col]);
+    }
+  } else if (startColIndex === endColIndex && startRowIndex > endRowIndex) {
+    direction = "vertical-inverted";
+    for (let row = startRowIndex; row >= endRowIndex; row--) {
+      selectedPositions.push({ row, col: startColIndex });
+      selectedLetters.push(grid[row][startColIndex]);
+    }
+  } else if (startRowIndex === endRowIndex && startColIndex > endColIndex) {
+    direction = "horizontal-inverted";
+    for (let col = startColIndex; col >= endColIndex; col--) {
+      selectedPositions.push({ row: startRowIndex, col });
+      selectedLetters.push(grid[startRowIndex][col]);
+    }
+  } else if (rowDiff === colDiff) {
+    direction = "diagonal";
+    for (let i = 0; i <= rowDiff; i++) {
+      const row = startRowIndex + i * (endRowIndex > startRowIndex ? 1 : -1);
+      const col = startColIndex + i * (endColIndex > startColIndex ? 1 : -1);
+      selectedPositions.push({ row, col });
+      selectedLetters.push(grid[row][col]);
+    }
+  } else if (rowDiff === 0) {
+    direction = "horizontal";
+    for (let col = startColIndex; col <= endColIndex; col++) {
+      selectedPositions.push({ row: startRowIndex, col });
+      selectedLetters.push(grid[startRowIndex][col]);
+    }
+  } else if (colDiff === 0) {
+    direction = "vertical";
+    for (let row = startRowIndex; row <= endRowIndex; row++) {
+      selectedPositions.push({ row, col: startColIndex });
+      selectedLetters.push(grid[row][startColIndex]);
+    }
+  }
+  return {
+    selectedLetters,
+    selectedPositions,
+    direction,
+  };
 };
 
 const generateRandomCharacter = () => {
@@ -78,23 +146,14 @@ const Home = () => {
   const gridSize = longestWordLength(words) + addCellToGrid(words.length);
 
   const addPosition = (row: number, col: number) => {
+    console.log(`addPosition ${row}, ${col}`);
     setPositionsSelected((prev) => [...prev, { row, col }]);
   };
 
   const [grid, setGrid] = useState(createGrid(gridSize, gridSize, "x"));
   const [selectedWord, setSelectedWord] = useState("");
-  const [positionsSelected, setPositionsSelected] = useState<
-    {
-      row: number;
-      col: number;
-    }[]
-  >([]);
-  const [correctPositions, setCorrectPositions] = useState<
-    {
-      row: number;
-      col: number;
-    }[]
-  >([]);
+  const [positionsSelected, setPositionsSelected] = useState<Ipoint[]>([]);
+  const [correctPositions, setCorrectPositions] = useState<Ipoint[]>([]);
   const [selecting, setSelecting] = useState(false);
   const [startPos, setStartPos] = useState({ row: -1, col: -1 });
   const [currentPos, setCurrentPos] = useState({ row: -1, col: -1 });
@@ -107,113 +166,30 @@ const Home = () => {
     addPosition(row, col);
   };
 
-  const getDiagonalPositions = (
-    startRow: number,
-    startCol: number,
-    endRow: number,
-    endCol: number
-  ) => {
-    const positions = [];
-    const rowDiff = endRow - startRow;
-    const colDiff = endCol - startCol;
-
-    const rowStep = rowDiff > 0 ? 1 : -1;
-    const colStep = colDiff > 0 ? 1 : -1;
-
-    let row = startRow;
-    let col = startCol;
-
-    while (row !== endRow || col !== endCol) {
-      positions.push({ row, col });
-      row += rowStep;
-      col += colStep;
-    }
-
-    positions.push({ row: endRow, col: endCol });
-    return positions;
-  };
-
   const handleCellMouseEnter = (row: number, col: number) => {
-    console.log(`MouseEnter en la celda ${row}, ${col}`);
+    // console.log(`MouseEnter en la celda ${row}, ${col}`);
     if (selecting) {
-      const direction = getMouseDirection(startPos.row, startPos.col, row, col);
-
+      const { direction, selectedLetters, selectedPositions } =
+        getSelectedHoverData(grid, startPos, { row, col });
+      setPositionsSelected(selectedPositions);
       setCurrentPos({ row, col });
-
-      if (direction === "diagonal") {
-        const diagonalPositions = getDiagonalPositions(
-          startPos.row,
-          startPos.col,
-          row,
-          col
-        );
-
-        diagonalPositions.forEach((position) => {
-          console.log(position);
-          addPosition(position.row, position.col);
-        });
-      } else if (direction === "horizontal" || direction === "vertical") {
-        addPosition(row, col);
-      }
-    }
-  };
-
-  const getMouseDirection = (
-    startRow: number,
-    startCol: number,
-    currentRow: number,
-    currentCol: number
-  ) => {
-    const rowDiff = Math.abs(currentRow - startRow);
-    const colDiff = Math.abs(currentCol - startCol);
-
-    if (rowDiff === colDiff) {
-      // Diagonal movement
-      return "diagonal";
-    } else if (rowDiff > colDiff) {
-      // Vertical movement
-      return "vertical";
-    } else {
-      // Horizontal movement
-      return "horizontal";
     }
   };
 
   const handleCellMouseUp = () => {
     if (selecting) {
       setSelecting(false);
-      clearSelection();
-      const selectedLetters = [];
-      const startRowIndex = startPos.row;
-      const endRowIndex = currentPos.row;
-      const startColIndex = startPos.col;
-      const endColIndex = currentPos.col;
-      const rowDiff = Math.abs(endRowIndex - startRowIndex);
-      const colDiff = Math.abs(endColIndex - startColIndex);
-
-      if (rowDiff === colDiff) {
-        // Diagonal selection
-        for (let i = 0; i <= rowDiff; i++) {
-          const row =
-            startRowIndex + i * (endRowIndex > startRowIndex ? 1 : -1);
-          const col =
-            startColIndex + i * (endColIndex > startColIndex ? 1 : -1);
-          selectedLetters.push(grid[row][col]);
-        }
-      } else if (rowDiff === 0) {
-        // Horizontal selection
-        for (let col = startColIndex; col <= endColIndex; col++) {
-          selectedLetters.push(grid[startRowIndex][col]);
-        }
-      } else if (colDiff === 0) {
-        // Vertical selection
-        for (let row = startRowIndex; row <= endRowIndex; row++) {
-          selectedLetters.push(grid[row][startColIndex]);
+      const { selectedLetters, selectedPositions } = getSelectedHoverData(
+        grid,
+        startPos,
+        currentPos
+      );
+      if (grid[currentPos.row][currentPos.col] !== "x") {
+        if (checkSelectedWord(selectedLetters.join(""), words)) {
+          setCorrectPositions((prev) => [...prev, ...selectedPositions]);
         }
       }
-
-      console.log(selectedLetters.join(""));
-      setSelectedWord(selectedLetters.join(""));
+      clearSelection();
       setCurrentPos({ row: -1, col: -1 });
       setStartPos({ row: -1, col: -1 });
     }
@@ -283,26 +259,6 @@ const Home = () => {
     setGrid(newGrid);
   };
 
-  const handleCellClick = (row: number, col: number) => {
-    // console.log(`Click en la celda ${row}, ${col}`);
-    if (grid[row][col] !== "x") {
-      const selectedLetter = grid[row][col];
-      if (checkSelectedWord(selectedWord + selectedLetter, words)) {
-        setCorrectPositions((prev) => [
-          ...prev,
-          ...positionsSelected,
-          { row, col },
-        ]);
-        clearSelection();
-      } else {
-        setPositionsSelected((prev) => [...prev, { row, col }]);
-      }
-      setSelectedWord(selectedWord + selectedLetter);
-    } else {
-      clearSelection();
-    }
-  };
-
   const clearSelection = () => {
     console.log("clearSelection");
     setPositionsSelected([]);
@@ -329,6 +285,12 @@ const Home = () => {
               {row.map((letter, columnIndex) => (
                 <div
                   key={columnIndex}
+                  onMouseDown={() => handleCellMouseDown(rowIndex, columnIndex)}
+                  onMouseEnter={() =>
+                    handleCellMouseEnter(rowIndex, columnIndex)
+                  }
+                  onMouseUp={handleCellMouseUp}
+                  // onClick={() => handleCellClick(rowIndex, columnIndex)}
                   className={`grid-cell ${
                     positionsSelected.some(
                       (pos) => pos.row === rowIndex && pos.col === columnIndex
@@ -344,18 +306,7 @@ const Home = () => {
                       : ""
                   }`}
                 >
-                  <p
-                    onMouseDown={() =>
-                      handleCellMouseDown(rowIndex, columnIndex)
-                    }
-                    onMouseEnter={() =>
-                      handleCellMouseEnter(rowIndex, columnIndex)
-                    }
-                    onMouseUp={handleCellMouseUp}
-                    // onClick={() => handleCellClick(rowIndex, columnIndex)}
-                  >
-                    {letter === "x" ? "" : letter}
-                  </p>
+                  {letter === "x" ? "" : letter}
                 </div>
               ))}
             </div>
